@@ -5,7 +5,6 @@ import 'dart:ui' as ui;
 import 'dart:typed_data';
 
 import '../widgets/character_sprite.dart';
-import '../widgets/gun_painter.dart';
 import '../widgets/army_camp_painter.dart';
 import '../widgets/compass_painter.dart';
 
@@ -21,8 +20,6 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
   double _characterX = 0.0;
   double _characterY = 0.0;
 
-  // Gun direction in radians
-  double _gunDirection = 0.0;
 
   // Character size
   final double _characterSize = 100.0;
@@ -42,9 +39,6 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
   Offset _movementJoystickPosition = Offset.zero;
   Offset _movementJoystickDelta = Offset.zero;
 
-  bool _gunJoystickActive = false;
-  Offset _gunJoystickPosition = Offset.zero;
-  Offset _gunJoystickDelta = Offset.zero;
 
   final double _joystickRadius = 60.0;
   final double _innerJoystickRadius = 25.0;
@@ -189,9 +183,9 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
         double newX = _characterX + _moveDirectionX * _movementSpeed;
         double newY = _characterY + _moveDirectionY * _movementSpeed;
 
-        // Check map boundaries
-        newX = newX.clamp(-mapWidth/2 + _characterSize/2, mapWidth/2 - _characterSize/2);
-        newY = newY.clamp(-mapHeight/2 + _characterSize/2, mapHeight/2 - _characterSize/2);
+        // Check map boundaries (allow full map movement)
+        newX = newX.clamp(-mapWidth/2, mapWidth/0.5);
+        newY = newY.clamp(-mapHeight/2, mapHeight/0.5);
 
         // Create character rect for collision detection
         final characterRect = Rect.fromCenter(
@@ -200,7 +194,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
           height: _characterSize * 0.6,
         );
 
-        // Check collisions with obstacles
+        // Optional: Collision detection (currently commented out)
         bool collisionDetected = false;
         for (final obstacle in _obstacles) {
           final adjustedObstacle = Rect.fromLTWH(
@@ -210,13 +204,13 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
             obstacle.height,
           );
 
-          if (characterRect.overlaps(adjustedObstacle)) {
-            collisionDetected = true;
-            break;
-          }
+          // Uncomment if you want to add collision detection
+          // if (characterRect.overlaps(adjustedObstacle)) {
+          //   collisionDetected = true;
+          //   break;
+          // }
         }
 
-        // Check collisions with tents
         for (final tent in _tents) {
           final adjustedTent = Rect.fromLTWH(
             tent.left - mapWidth/2,
@@ -225,21 +219,20 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
             tent.height,
           );
 
-          if (characterRect.overlaps(adjustedTent)) {
-            collisionDetected = true;
-            break;
-          }
+          // Uncomment if you want to add collision detection
+          // if (characterRect.overlaps(adjustedTent)) {
+          //   collisionDetected = true;
+          //   break;
+          // }
         }
 
-        // Update position if no collision
-        if (!collisionDetected) {
-          setState(() {
-            _characterX = newX;
-            _characterY = newY;
-            // Update facing direction for the character
-            _facingDirection = math.atan2(_moveDirectionY, _moveDirectionX);
-          });
-        }
+        // Update position (no collision check for now)
+        setState(() {
+          _characterX = newX;
+          _characterY = newY;
+          // Update facing direction for the character
+          _facingDirection = math.atan2(_moveDirectionY, _moveDirectionX);
+        });
       } else if (_isWalking) {
         // Stop walking animation
         _isWalking = false;
@@ -300,43 +293,10 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
     });
   }
 
-  // Handle gun joystick
-  void _handleGunJoystickStart(Offset position) {
-    setState(() {
-      _gunJoystickActive = true;
-      _gunJoystickPosition = position;
-      _gunJoystickDelta = Offset.zero;
-    });
-  }
 
-  void _handleGunJoystickUpdate(Offset position) {
-    if (!_gunJoystickActive) return;
 
-    Offset delta = position - _gunJoystickPosition;
-    double distance = delta.distance;
 
-    // Limit the delta to the joystick radius
-    if (distance > _joystickRadius) {
-      delta = delta * (_joystickRadius / distance);
-      distance = _joystickRadius;
-    }
 
-    setState(() {
-      _gunJoystickDelta = delta;
-
-      // Calculate gun direction
-      if (distance > 10.0) {
-        _gunDirection = math.atan2(delta.dy, delta.dx);
-      }
-    });
-  }
-
-  void _handleGunJoystickEnd() {
-    setState(() {
-      _gunJoystickActive = false;
-      _gunJoystickDelta = Offset.zero;
-    });
-  }
 
   Widget _buildJoystick(Offset delta) {
     return Container(
@@ -439,14 +399,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
             direction: _facingDirection,
           ),
 
-          // Gun as a simple line
-          CustomPaint(
-            size: Size(_characterSize, _characterSize),
-            painter: GunPainter(
-              angle: _gunDirection,
-              length: 50,
-            ),
-          ),
+
         ],
       ),
     );
@@ -464,8 +417,6 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
             // Left side of screen - movement joystick
             _handleMovementJoystickStart(position);
           } else {
-            // Right side of screen - gun direction joystick
-            _handleGunJoystickStart(position);
           }
         },
         onPanUpdate: (details) {
@@ -474,17 +425,13 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
             // Left side of screen - movement joystick
             _handleMovementJoystickUpdate(position);
           } else {
-            // Right side of screen - gun direction joystick
-            _handleGunJoystickUpdate(position);
           }
         },
         onPanEnd: (details) {
           if (_movementJoystickActive) {
             _handleMovementJoystickEnd();
           }
-          if (_gunJoystickActive) {
-            _handleGunJoystickEnd();
-          }
+
         },
         child: Stack(
           children: [
@@ -517,13 +464,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                 child: _buildJoystick(_movementJoystickDelta),
               ),
 
-            // Gun direction joystick (right side)
-            if (_gunJoystickActive)
-              Positioned(
-                left: _gunJoystickPosition.dx - _joystickRadius,
-                top: _gunJoystickPosition.dy - _joystickRadius,
-                child: _buildJoystick(_gunJoystickDelta),
-              ),
+
 
             // Movement joystick indicator when not active
             Positioned(
@@ -532,12 +473,6 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
               child: _buildJoystickIndicator("MOVEMENT"),
             ),
 
-            // Gun direction joystick indicator when not active
-            Positioned(
-              right: 30,
-              bottom: 30,
-              child: _buildJoystickIndicator("GUN DIRECTION"),
-            ),
 
             // HUD Info panel
             Positioned(
@@ -573,7 +508,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                       ),
                       const SizedBox(width: 8),
                       Text(
-                        'POSITION: (${_characterX.toStringAsFixed(0)}, ${_characterY.toStringAsFixed(0)}) | ANGLE: ${(_gunDirection * 180 / math.pi).toStringAsFixed(0)}°',
+                        'POSITION: (${_characterX.toStringAsFixed(0)}, ${_characterY.toStringAsFixed(0)})',
                         style: const TextStyle(
                           color: Color(0xFFD0D9CB), // Light military gray-green
                           fontSize: 14,

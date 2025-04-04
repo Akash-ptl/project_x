@@ -57,30 +57,6 @@ class ArmyCampPainter extends CustomPainter {
     final random = math.Random(42); // Fixed seed for consistent randomness
     final decorationPaint = Paint();
 
-    for (int i = 0; i < 50; i++) {
-      final x = random.nextDouble() * size.width;
-      final y = random.nextDouble() * size.height;
-      final radius = 5.0 + random.nextDouble() * 10.0;
-
-      // Decide on decoration type
-      final decorationType = random.nextInt(3);
-
-      switch (decorationType) {
-        case 0: // Dirt patch
-          decorationPaint.color = const Color(0xFF4A3429).withOpacity(0.3);
-          canvas.drawCircle(Offset(x, y), radius, decorationPaint);
-          break;
-        case 1: // Grass patch
-          decorationPaint.color = const Color(0xFF556B2F).withOpacity(0.3);
-          canvas.drawCircle(Offset(x, y), radius, decorationPaint);
-          break;
-        case 2: // Rocks
-          decorationPaint.color = const Color(0xFF787878).withOpacity(0.4);
-          canvas.drawCircle(Offset(x, y), radius, decorationPaint);
-          break;
-      }
-    }
-
     // Apply translation based on character position
     canvas.save();
     canvas.translate(
@@ -88,47 +64,124 @@ class ArmyCampPainter extends CustomPainter {
         size.height / 2 - characterY
     );
 
-    // Draw camp perimeter (large circular fence)
-    final perimeterPaint = Paint()
-      ..color = const Color(0xFF3E2723) // Dark brown
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 16;
-
-    canvas.drawCircle(
-        Offset(mapWidth/2, mapHeight/2),
-        math.min(mapWidth, mapHeight) * 0.45,
-        perimeterPaint
-    );
-
-    // Draw entrance to the camp (gap in the perimeter)
-    final entrancePaint = Paint()
-      ..color = const Color(0xFF5D4037) // Brown soil (same as ground)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 16;
-
-    final entranceAngle = math.pi / 4; // 45 degrees
-    final entranceSize = 60.0;
+    // Draw camp perimeter with military-style border
     final radius = math.min(mapWidth, mapHeight) * 0.45;
 
-    final entranceStart = Offset(
-        mapWidth/2 + radius * math.cos(entranceAngle - entranceSize/radius/2),
-        mapHeight/2 + radius * math.sin(entranceAngle - entranceSize/radius/2)
-    );
+    // Draw dashed red military border
+    final perimeterPaint = Paint()
+      ..color = const Color(0xFFB22222) // Firebrick red for border
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 12;
 
-    final entranceEnd = Offset(
-        mapWidth/2 + radius * math.cos(entranceAngle + entranceSize/radius/2),
-        mapHeight/2 + radius * math.sin(entranceAngle + entranceSize/radius/2)
-    );
+    // Create a dashed border effect
+    final dashWidth = 15.0;
+    final dashSpace = 10.0;
 
-    canvas.drawLine(entranceStart, entranceEnd, entrancePaint);
+    // Draw dashed circular border
+    for (double angle = 0; angle < math.pi * 2; angle += dashWidth / radius) {
+      final startPoint = Offset(
+          mapWidth/2 + radius * math.cos(angle),
+          mapHeight/2 + radius * math.sin(angle)
+      );
+
+      final endPoint = Offset(
+          mapWidth/2 + radius * math.cos(angle + dashWidth / radius),
+          mapHeight/2 + radius * math.sin(angle + dashWidth / radius)
+      );
+
+      canvas.drawLine(startPoint, endPoint, perimeterPaint);
+    }
+
+    // Add warning markers and barbed wire effect
+    final warningPaint = Paint()
+      ..color = const Color(0xFFFFD700) // Gold color for warning
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3;
+
+    final barbedWirePaint = Paint()
+      ..color = const Color(0xFFA9A9A9) // Dark gray for barbed wire
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2;
+
+    for (int i = 0; i < 16; i++) {
+      final angle = i * (math.pi * 2 / 16);
+
+      // Warning triangles
+      final warningSize = 20.0;
+      final warningCenter = Offset(
+          mapWidth/2 + (radius + 20) * math.cos(angle),
+          mapHeight/2 + (radius + 20) * math.sin(angle)
+      );
+
+      final warningPath = Path()
+        ..moveTo(
+            warningCenter.dx,
+            warningCenter.dy - warningSize/2
+        )
+        ..lineTo(
+            warningCenter.dx - warningSize/2,
+            warningCenter.dy + warningSize/2
+        )
+        ..lineTo(
+            warningCenter.dx + warningSize/2,
+            warningCenter.dy + warningSize/2
+        )
+        ..close();
+
+      canvas.drawPath(warningPath, warningPaint);
+
+      // Barbed wire effect
+      for (double wireOffset = 0; wireOffset < 30; wireOffset += 10) {
+        final wireRadius = radius + 40 + wireOffset;
+        final wireStart = Offset(
+            mapWidth/2 + wireRadius * math.cos(angle),
+            mapHeight/2 + wireRadius * math.sin(angle)
+        );
+        final wireEnd = Offset(
+            mapWidth/2 + wireRadius * math.cos(angle + 0.2),
+            mapHeight/2 + wireRadius * math.sin(angle + 0.2)
+        );
+
+        canvas.drawLine(wireStart, wireEnd, barbedWirePaint);
+      }
+    }
+
+    // Danger signs and warning text
+    final textPainter = TextPainter(
+      text: TextSpan(
+        text: 'DANGER',
+        style: TextStyle(
+          color: const Color(0xFFFF0000),
+          fontSize: 20,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+
+    // Place text at intervals around the border
+    for (int i = 0; i < 4; i++) {
+      final angle = i * (math.pi * 2 / 4);
+      final textCenter = Offset(
+          mapWidth/2 + (radius + 60) * math.cos(angle),
+          mapHeight/2 + (radius + 60) * math.sin(angle)
+      );
+
+      canvas.save();
+      canvas.translate(textCenter.dx, textCenter.dy);
+      canvas.rotate(angle + math.pi/2);
+      textPainter.paint(
+          canvas,
+          Offset(-textPainter.width/2, -textPainter.height/2)
+      );
+      canvas.restore();
+    }
 
     // Draw watch towers at perimeter (4 towers at cardinal directions)
     final towerPaint = Paint()..color = const Color(0xFF3E2723); // Dark brown
 
     for (int i = 0; i < 4; i++) {
       final angle = i * math.pi / 2; // 0, 90, 180, 270 degrees
-      // Skip the tower near the entrance
-      if ((angle - entranceAngle).abs() < 0.5) continue;
 
       final towerCenter = Offset(
           mapWidth/2 + radius * math.cos(angle),
