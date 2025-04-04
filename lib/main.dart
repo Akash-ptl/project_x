@@ -1,7 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'dart:math' as math;
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Lock to landscape orientation
+  SystemChrome.setPreferredOrientations([
+    DeviceOrientation.landscapeLeft,
+    DeviceOrientation.landscapeRight,
+  ]);
+
   runApp(const MyApp());
 }
 
@@ -13,9 +22,8 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'Character Movement',
       theme: ThemeData(
-        primarySwatch: Colors.blue,
         brightness: Brightness.dark,
-        scaffoldBackgroundColor: const Color(0xFF121212),
+        scaffoldBackgroundColor: Colors.black,
       ),
       home: const GameScreen(),
       debugShowCheckedModeBanner: false,
@@ -30,104 +38,72 @@ class GameScreen extends StatefulWidget {
   State<GameScreen> createState() => _GameScreenState();
 }
 
-class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateMixin {
+class _GameScreenState extends State<GameScreen> {
   // Character position
   double _characterX = 0.0;
   double _characterY = 0.0;
 
-  // Camera angle in radians
-  double _cameraAngle = 0.0;
+  // Gun direction in radians
+  double _gunDirection = 0.0;
 
   // Character size
   final double _characterSize = 60.0;
 
   // Movement speed
-  final double _movementSpeed = 3.0;
+  final double _movementSpeed = 5.0;
 
-  // Camera rotation speed in radians
-  final double _rotationSpeed = 0.1;
+  // Joystick controls
+  bool _movementJoystickActive = false;
+  Offset _movementJoystickPosition = Offset.zero;
+  Offset _movementJoystickDelta = Offset.zero;
 
-  // Joystick control
-  bool _joystickActive = false;
-  Offset _joystickPosition = Offset.zero;
-  Offset _joystickDelta = Offset.zero;
+  bool _gunJoystickActive = false;
+  Offset _gunJoystickPosition = Offset.zero;
+  Offset _gunJoystickDelta = Offset.zero;
+
   final double _joystickRadius = 60.0;
   final double _innerJoystickRadius = 25.0;
 
-  // Continuous movement
-  bool _isMoving = false;
+  // Movement direction
   double _moveDirectionX = 0.0;
   double _moveDirectionY = 0.0;
-
-  // Animation controller for character
-  late AnimationController _controller;
 
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(
-      duration: const Duration(milliseconds: 500),
-      vsync: this,
-    )..repeat(reverse: true);
-
-    // Set up animation ticker for smooth movement
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _setupAnimationTicker();
-    });
+    // Start the game loop
+    _startGameLoop();
   }
 
-  void _setupAnimationTicker() {
-    const frameDuration = Duration(milliseconds: 16); // ~60 FPS
-
-    Future<void> updateLoop() async {
-      while (mounted) {
-        await Future.delayed(frameDuration);
-        if (_isMoving && mounted) {
-          setState(() {
-            _characterX += _moveDirectionX * _movementSpeed;
-            _characterY += _moveDirectionY * _movementSpeed;
-          });
-        }
-      }
-    }
-
-    updateLoop();
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  // Change camera angle
-  void _changeCameraAngle(String direction) {
-    setState(() {
-      if (direction == 'left') {
-        _cameraAngle -= _rotationSpeed;
-      } else {
-        _cameraAngle += _rotationSpeed;
+  void _startGameLoop() {
+    Future.doWhile(() async {
+      // Update character position based on joystick input
+      if (_movementJoystickActive && _movementJoystickDelta.distance > 10) {
+        setState(() {
+          _characterX += _moveDirectionX * _movementSpeed;
+          _characterY += _moveDirectionY * _movementSpeed;
+        });
       }
 
-      // Normalize angle to 0-2π
-      _cameraAngle %= (2 * math.pi);
+      // Wait for next frame
+      await Future.delayed(const Duration(milliseconds: 16)); // ~60FPS
+      return true; // Continue the loop
     });
   }
 
-  // Handle joystick movement
-  void _handleJoystickStart(Offset position) {
+  // Handle movement joystick
+  void _handleMovementJoystickStart(Offset position) {
     setState(() {
-      _joystickActive = true;
-      _joystickPosition = position;
-      _joystickDelta = Offset.zero;
-      _isMoving = false;
+      _movementJoystickActive = true;
+      _movementJoystickPosition = position;
+      _movementJoystickDelta = Offset.zero;
     });
   }
 
-  void _handleJoystickUpdate(Offset position) {
-    if (!_joystickActive) return;
+  void _handleMovementJoystickUpdate(Offset position) {
+    if (!_movementJoystickActive) return;
 
-    Offset delta = position - _joystickPosition;
+    Offset delta = position - _movementJoystickPosition;
     double distance = delta.distance;
 
     // Limit the delta to the joystick radius
@@ -137,229 +113,235 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
     }
 
     setState(() {
-      _joystickDelta = delta;
+      _movementJoystickDelta = delta;
 
-      // Calculate movement direction relative to camera angle
-      if (distance > 10.0) { // Small threshold to prevent tiny movements
-        _isMoving = true;
-
+      // Calculate movement direction
+      if (distance > 10.0) {
         // Normalize delta
-        double normalizedX = delta.dx / distance;
-        double normalizedY = delta.dy / distance;
-
-        // Apply camera rotation to movement direction
-        _moveDirectionX = normalizedX * math.cos(_cameraAngle) + normalizedY * math.sin(_cameraAngle);
-        _moveDirectionY = normalizedY * math.cos(_cameraAngle) - normalizedX * math.sin(_cameraAngle);
+        _moveDirectionX = delta.dx / distance;
+        _moveDirectionY = delta.dy / distance;
       } else {
-        _isMoving = false;
+        _moveDirectionX = 0;
+        _moveDirectionY = 0;
       }
     });
   }
 
-  void _handleJoystickEnd() {
+  void _handleMovementJoystickEnd() {
     setState(() {
-      _joystickActive = false;
-      _joystickDelta = Offset.zero;
-      _isMoving = false;
+      _movementJoystickActive = false;
+      _movementJoystickDelta = Offset.zero;
+      _moveDirectionX = 0;
+      _moveDirectionY = 0;
     });
+  }
+
+  // Handle gun joystick
+  void _handleGunJoystickStart(Offset position) {
+    setState(() {
+      _gunJoystickActive = true;
+      _gunJoystickPosition = position;
+      _gunJoystickDelta = Offset.zero;
+    });
+  }
+
+  void _handleGunJoystickUpdate(Offset position) {
+    if (!_gunJoystickActive) return;
+
+    Offset delta = position - _gunJoystickPosition;
+    double distance = delta.distance;
+
+    // Limit the delta to the joystick radius
+    if (distance > _joystickRadius) {
+      delta = delta * (_joystickRadius / distance);
+      distance = _joystickRadius;
+    }
+
+    setState(() {
+      _gunJoystickDelta = delta;
+
+      // Calculate gun direction
+      if (distance > 10.0) {
+        _gunDirection = math.atan2(delta.dy, delta.dx);
+      }
+    });
+  }
+
+  void _handleGunJoystickEnd() {
+    setState(() {
+      _gunJoystickActive = false;
+      _gunJoystickDelta = Offset.zero;
+    });
+  }
+
+  Widget _buildJoystick(Offset delta) {
+    return Container(
+      width: _joystickRadius * 2,
+      height: _joystickRadius * 2,
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.1),
+        shape: BoxShape.circle,
+        border: Border.all(
+          color: Colors.white.withOpacity(0.3),
+          width: 2,
+        ),
+      ),
+      child: Center(
+        child: Transform.translate(
+          offset: delta,
+          child: Container(
+            width: _innerJoystickRadius * 2,
+            height: _innerJoystickRadius * 2,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.white.withOpacity(0.5),
+                  blurRadius: 10,
+                  spreadRadius: 2,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildJoystickIndicator(String label) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: Colors.white.withOpacity(0.3),
+          width: 1,
+        ),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 12,
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Icon(
+            Icons.touch_app,
+            color: Colors.white,
+            size: 32,
+          ),
+        ],
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final screenSize = MediaQuery.of(context).size;
-    final centerX = screenSize.width / 2;
-    final centerY = screenSize.height / 2;
 
     return Scaffold(
       body: GestureDetector(
         onPanStart: (details) {
-          // Only activate joystick in the lower left quadrant
-          if (details.localPosition.dx < screenSize.width / 2 &&
-              details.localPosition.dy > screenSize.height / 2) {
-            _handleJoystickStart(details.localPosition);
+          final position = details.localPosition;
+          if (position.dx < screenSize.width / 2) {
+            // Left side of screen - movement joystick
+            _handleMovementJoystickStart(position);
+          } else {
+            // Right side of screen - gun direction joystick
+            _handleGunJoystickStart(position);
           }
         },
         onPanUpdate: (details) {
-          _handleJoystickUpdate(details.localPosition);
+          final position = details.localPosition;
+          if (position.dx < screenSize.width / 2) {
+            // Left side of screen - movement joystick
+            _handleMovementJoystickUpdate(position);
+          } else {
+            // Right side of screen - gun direction joystick
+            _handleGunJoystickUpdate(position);
+          }
         },
-        onPanEnd: (_) {
-          _handleJoystickEnd();
+        onPanEnd: (details) {
+          if (_movementJoystickActive) {
+            _handleMovementJoystickEnd();
+          }
+          if (_gunJoystickActive) {
+            _handleGunJoystickEnd();
+          }
         },
         child: Stack(
           children: [
-            // Game world with colorful tiles
-            CustomPaint(
-              size: Size(screenSize.width, screenSize.height),
-              painter: ColorfulTilesPainter(
-                cameraAngle: _cameraAngle,
-                characterX: _characterX,
-                characterY: _characterY,
-              ),
-            ),
-
-            // Character
-            AnimatedBuilder(
-              animation: _controller,
-              builder: (context, child) {
-                return Positioned(
-                  left: centerX - _characterSize / 2,
-                  top: centerY - _characterSize / 2,
-                  child: Transform.rotate(
-                    angle: _isMoving ? math.atan2(_moveDirectionY, _moveDirectionX) : 0,
-                    child: Container(
-                      width: _characterSize,
-                      height: _characterSize,
-                      decoration: BoxDecoration(
-                        color: Colors.blue,
-                        shape: BoxShape.circle,
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.blue.withOpacity(0.5),
-                            blurRadius: 10.0 * (1 + 0.2 * math.sin(_controller.value * math.pi)),
-                            spreadRadius: 5.0 * (1 + 0.1 * math.sin(_controller.value * math.pi)),
-                          ),
-                        ],
-                      ),
-                      child: Center(
-                        child: Icon(
-                          Icons.person,
-                          color: Colors.white,
-                          size: 40,
-                        ),
-                      ),
-                    ),
-                  ),
-                );
-              },
-            ),
-
-            // Joystick (only visible when active)
-            if (_joystickActive)
-              Positioned(
-                left: _joystickPosition.dx - _joystickRadius,
-                top: _joystickPosition.dy - _joystickRadius,
-                child: Container(
-                  width: _joystickRadius * 2,
-                  height: _joystickRadius * 2,
-                  decoration: BoxDecoration(
-                    color: Colors.black54,
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: Colors.blue.withOpacity(0.5),
-                      width: 2,
-                    ),
-                  ),
-                  child: Center(
-                    child: Transform.translate(
-                      offset: _joystickDelta,
-                      child: Container(
-                        width: _innerJoystickRadius * 2,
-                        height: _innerJoystickRadius * 2,
-                        decoration: BoxDecoration(
-                          color: Colors.blue,
-                          shape: BoxShape.circle,
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.blue.withOpacity(0.5),
-                              blurRadius: 10,
-                              spreadRadius: 2,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-
-            // Camera controls
+            // Character with gun
             Positioned(
-              right: 20,
-              bottom: 20,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
+              left: screenSize.width / 2 + _characterX - _characterSize / 2,
+              top: screenSize.height / 2 + _characterY - _characterSize / 2,
+              width: _characterSize,
+              height: _characterSize,
+              child: Stack(
                 children: [
+                  // Character
                   Container(
-                    padding: const EdgeInsets.all(12.0),
-                    decoration: BoxDecoration(
-                      color: Colors.black54,
-                      borderRadius: BorderRadius.circular(20),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.orange.withOpacity(0.3),
-                          blurRadius: 8,
-                          spreadRadius: 1,
-                        ),
-                      ],
+                    width: _characterSize,
+                    height: _characterSize,
+                    decoration: const BoxDecoration(
+                      color: Colors.white,
+                      shape: BoxShape.circle,
                     ),
-                    child: Column(
-                      children: [
-                        Text(
-                          'CAMERA',
-                          style: TextStyle(
-                            color: Colors.orange,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        Row(
-                          children: [
-                            _buildCameraButton('left', Icons.rotate_left),
-                            const SizedBox(width: 24),
-                            _buildCameraButton('right', Icons.rotate_right),
-                          ],
-                        ),
-                      ],
+                    child: const Center(
+                      child: Icon(
+                        Icons.person,
+                        color: Colors.black,
+                        size: 36,
+                      ),
+                    ),
+                  ),
+
+                  // Gun as a simple line
+                  CustomPaint(
+                    size: Size(_characterSize, _characterSize),
+                    painter: GunPainter(
+                      angle: _gunDirection,
+                      length: 40,
                     ),
                   ),
                 ],
               ),
             ),
 
-            // Joystick indicator when not active
+            // Movement joystick (left side)
+            if (_movementJoystickActive)
+              Positioned(
+                left: _movementJoystickPosition.dx - _joystickRadius,
+                top: _movementJoystickPosition.dy - _joystickRadius,
+                child: _buildJoystick(_movementJoystickDelta),
+              ),
+
+            // Gun direction joystick (right side)
+            if (_gunJoystickActive)
+              Positioned(
+                left: _gunJoystickPosition.dx - _joystickRadius,
+                top: _gunJoystickPosition.dy - _joystickRadius,
+                child: _buildJoystick(_gunJoystickDelta),
+              ),
+
+            // Movement joystick indicator when not active
             Positioned(
               left: 30,
               bottom: 30,
-              child: Container(
-                padding: EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.black54,
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.blue.withOpacity(0.3),
-                      blurRadius: 8,
-                      spreadRadius: 1,
-                    ),
-                  ],
-                ),
-                child: Column(
-                  children: [
-                    Text(
-                      'TOUCH HERE',
-                      style: TextStyle(
-                        color: Colors.white70,
-                        fontSize: 12,
-                      ),
-                    ),
-                    SizedBox(height: 8),
-                    Icon(
-                      Icons.touch_app,
-                      color: Colors.blue,
-                      size: 32,
-                    ),
-                    SizedBox(height: 8),
-                    Text(
-                      'FOR JOYSTICK',
-                      style: TextStyle(
-                        color: Colors.white70,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+              child: _buildJoystickIndicator("MOVEMENT"),
+            ),
+
+            // Gun direction joystick indicator when not active
+            Positioned(
+              right: 30,
+              bottom: 30,
+              child: _buildJoystickIndicator("GUN DIRECTION"),
             ),
 
             // Info panel
@@ -369,21 +351,18 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
               right: 0,
               child: Center(
                 child: Container(
-                  padding: EdgeInsets.symmetric(vertical: 10, horizontal: 16),
+                  padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
                   decoration: BoxDecoration(
-                    color: Colors.black54,
+                    color: Colors.white.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(20),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.white.withOpacity(0.1),
-                        blurRadius: 8,
-                        spreadRadius: 1,
-                      ),
-                    ],
+                    border: Border.all(
+                      color: Colors.white.withOpacity(0.3),
+                      width: 1,
+                    ),
                   ),
                   child: Text(
-                    'Position: (${_characterX.toStringAsFixed(1)}, ${_characterY.toStringAsFixed(1)}) | Angle: ${(_cameraAngle * 180 / math.pi).toStringAsFixed(1)}°',
-                    style: TextStyle(color: Colors.white, fontSize: 16),
+                    'Gun: ${(_gunDirection * 180 / math.pi).toStringAsFixed(1)}°',
+                    style: const TextStyle(color: Colors.white, fontSize: 16),
                   ),
                 ),
               ),
@@ -393,172 +372,33 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
       ),
     );
   }
-
-  Widget _buildCameraButton(String direction, IconData icon) {
-    return Container(
-      margin: const EdgeInsets.all(4.0),
-      child: ElevatedButton(
-        onPressed: () => _changeCameraAngle(direction),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.orange,
-          foregroundColor: Colors.white,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-          padding: EdgeInsets.all(16),
-          elevation: 12,
-        ),
-        child: Icon(icon, size: 28),
-      ),
-    );
-  }
 }
 
-// Custom painter to draw colorful infinite tiles
-class ColorfulTilesPainter extends CustomPainter {
-  final double cameraAngle;
-  final double characterX;
-  final double characterY;
+// Custom painter for the gun line
+class GunPainter extends CustomPainter {
+  final double angle;
+  final double length;
 
-  ColorfulTilesPainter({
-    required this.cameraAngle,
-    required this.characterX,
-    required this.characterY,
-  });
-
-  // List of vibrant colors for tiles
-  final List<Color> tileColors = [
-    Colors.purple.shade300,
-    Colors.blue.shade300,
-    Colors.green.shade300,
-    Colors.yellow.shade300,
-    Colors.orange.shade300,
-    Colors.red.shade300,
-    Colors.pink.shade300,
-    Colors.teal.shade300,
-  ];
+  GunPainter({required this.angle, required this.length});
 
   @override
   void paint(Canvas canvas, Size size) {
-    final centerX = size.width / 2;
-    final centerY = size.height / 2;
+    final paint = Paint()
+      ..color = Colors.white
+      ..strokeWidth = 4
+      ..strokeCap = StrokeCap.round;
 
-    // Save the canvas state
-    canvas.save();
-
-    // Translate to center and rotate
-    canvas.translate(centerX, centerY);
-    canvas.rotate(cameraAngle);
-
-    // Apply character offset (inverted to create illusion of character movement)
-    canvas.translate(-characterX, -characterY);
-
-    final tileSize = 80.0;
-    final visibleTilesX = (size.width / tileSize).ceil() + 2;
-    final visibleTilesY = (size.height / tileSize).ceil() + 2;
-
-    // Calculate starting tile coordinates to cover the visible area
-    final startX = (characterX / tileSize).floor() - visibleTilesX ~/ 2;
-    final startY = (characterY / tileSize).floor() - visibleTilesY ~/ 2;
-
-    // Draw the tiles
-    for (int x = startX; x < startX + visibleTilesX; x++) {
-      for (int y = startY; y < startY + visibleTilesY; y++) {
-        // Determine color based on position to create a pattern
-        // Use a consistent pattern based on coordinates
-        final colorIndex = ((x % 3) + (y % 3) * 3) % tileColors.length;
-        final tileColor = tileColors[colorIndex];
-
-        // Create tile with slight gradient effect
-        final rect = Rect.fromLTWH(
-            x * tileSize,
-            y * tileSize,
-            tileSize,
-            tileSize
-        );
-
-        final paint = Paint()..color = tileColor;
-
-        // Add a border to each tile
-        canvas.drawRect(rect, paint);
-
-        // Draw border
-        final borderPaint = Paint()
-          ..color = Colors.black.withOpacity(0.2)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 2.0;
-
-        canvas.drawRect(rect, borderPaint);
-
-        // Add a subtle pattern inside each tile for visual interest
-        final patternPaint = Paint()
-          ..color = Colors.white.withOpacity(0.1)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.0;
-
-        // Draw diagonal line
-        canvas.drawLine(
-            Offset(x * tileSize, y * tileSize),
-            Offset(x * tileSize + tileSize, y * tileSize + tileSize),
-            patternPaint
-        );
-
-        canvas.drawLine(
-            Offset(x * tileSize + tileSize, y * tileSize),
-            Offset(x * tileSize, y * tileSize + tileSize),
-            patternPaint
-        );
-      }
-    }
-
-    // Draw coordinate axes for reference
-    final axisPaint = Paint()
-      ..color = Colors.white.withOpacity(0.3)
-      ..strokeWidth = 2.0;
-
-    // X-axis
-    canvas.drawLine(
-        Offset(-1000, 0),
-        Offset(1000, 0),
-        axisPaint
+    final center = Offset(size.width / 2, size.height / 2);
+    final endPoint = center + Offset(
+      math.cos(angle) * length,
+      math.sin(angle) * length,
     );
 
-    // Y-axis
-    canvas.drawLine(
-        Offset(0, -1000),
-        Offset(0, 1000),
-        axisPaint
-    );
-
-    // Draw grid markers
-    final markerPaint = Paint()
-      ..color = Colors.white.withOpacity(0.4)
-      ..strokeWidth = 1.0;
-
-    for (int i = -10; i <= 10; i++) {
-      // X-axis markers
-      canvas.drawLine(
-          Offset(i * tileSize * 5, -10),
-          Offset(i * tileSize * 5, 10),
-          markerPaint
-      );
-
-      // Y-axis markers
-      canvas.drawLine(
-          Offset(-10, i * tileSize * 5),
-          Offset(10, i * tileSize * 5),
-          markerPaint
-      );
-    }
-
-    // Restore the canvas state
-    canvas.restore();
+    canvas.drawLine(center, endPoint, paint);
   }
 
   @override
-  bool shouldRepaint(covariant ColorfulTilesPainter oldDelegate) {
-    return oldDelegate.cameraAngle != cameraAngle ||
-        oldDelegate.characterX != characterX ||
-        oldDelegate.characterY != characterY;
+  bool shouldRepaint(CustomPainter oldDelegate) {
+    return true;
   }
 }
