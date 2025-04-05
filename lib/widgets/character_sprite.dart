@@ -62,11 +62,12 @@ class SpritePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    // Calculate the width of a single frame
-    final frameWidth = image.width / totalFrames;
+    // Calculate the width of a single frame - ensure it's an integer to avoid blurry sprites
+    final frameWidth = (image.width / totalFrames).floorToDouble();
     final frameHeight = image.height.toDouble();
 
     // Source rectangle - which part of the sprite sheet to show
+    // Make sure we're selecting the correct frame from the sprite sheet
     final src = Rect.fromLTWH(
       frameIndex * frameWidth,
       0,
@@ -87,10 +88,21 @@ class SpritePainter extends CustomPainter {
     if (isOverlay) {
       // Use a blend mode appropriate for effects like firing or reloading
       paint.blendMode = BlendMode.srcOver;
+      paint.filterQuality = FilterQuality.medium; // Improve quality for effects
+    } else {
+      // Better quality for character sprites
+      paint.filterQuality = FilterQuality.medium;
     }
 
     // Draw the specific frame from the sprite sheet
     canvas.drawImageRect(image, src, dst, paint);
+
+    // For debugging: show frame boundaries
+    // final debugPaint = Paint()
+    //   ..color = Colors.red
+    //   ..style = PaintingStyle.stroke
+    //   ..strokeWidth = 1.0;
+    // canvas.drawRect(dst, debugPaint);
   }
 
   @override
