@@ -9,6 +9,7 @@ class CharacterSprite extends StatelessWidget {
   final int totalFrames;
   final double size;
   final double direction;
+  final bool isOverlay;
 
   const CharacterSprite({
     Key? key,
@@ -17,6 +18,7 @@ class CharacterSprite extends StatelessWidget {
     required this.totalFrames,
     required this.size,
     required this.direction,
+    this.isOverlay = false,
   }) : super(key: key);
 
   @override
@@ -35,6 +37,7 @@ class CharacterSprite extends StatelessWidget {
             image: image,
             frameIndex: frameIndex,
             totalFrames: totalFrames,
+            isOverlay: isOverlay,
           ),
           size: Size(size, size),
         ),
@@ -48,11 +51,13 @@ class SpritePainter extends CustomPainter {
   final ui.Image image;
   final int frameIndex;
   final int totalFrames;
+  final bool isOverlay;
 
   SpritePainter({
     required this.image,
     required this.frameIndex,
     required this.totalFrames,
+    this.isOverlay = false,
   });
 
   @override
@@ -77,12 +82,20 @@ class SpritePainter extends CustomPainter {
       size.height,
     );
 
+    // Create paint with blend mode if this is an overlay sprite
+    final Paint paint = Paint();
+    if (isOverlay) {
+      // Use a blend mode appropriate for effects like firing or reloading
+      paint.blendMode = BlendMode.srcOver;
+    }
+
     // Draw the specific frame from the sprite sheet
-    canvas.drawImageRect(image, src, dst, Paint());
+    canvas.drawImageRect(image, src, dst, paint);
   }
 
   @override
   bool shouldRepaint(covariant SpritePainter oldDelegate) {
-    return oldDelegate.frameIndex != frameIndex;
+    return oldDelegate.frameIndex != frameIndex ||
+        oldDelegate.isOverlay != isOverlay;
   }
 }
